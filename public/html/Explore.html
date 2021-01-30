@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- font -->
+    <link defer rel="preconnect" href="https://fonts.gstatic.com">
+    <link defer href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP&display=swap" rel="stylesheet">
+    
+    <link defer href="/css/Twattaa.css" rel="stylesheet">
+
+    <!-- socker.io -->
+    <script defer src="/socket.io/socket.io.js"></script>
+
+    <!-- Vue.js -->
+    <!-- <script defer src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script> -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+
+    <script src="/js/Explore.js" defer></script>
+
+    <title>Twattaa</title>
+</head>
+
+<body>
+    <div class="header">Explore</div>
+    <div id="search" class="my_message">
+        <form>
+            <input v-model="searchText" @keydown.enter.prevent="search"
+                id="search_input" class="search_input" placeholder="Search Twattaa">
+        </form>
+    </div>
+    <div class="main" id="timeline">
+        <div v-for="message in messages" class="message">
+            <div>{{message.id}} <span class="message_time">{{message.talk_on}}</span></div>
+            <div>{{message.body}}</div>
+            <div class="message_fav">
+                <label>Fav {{message.fav_count}}</label>
+                <input type="checkbox" class="message_fav_button" v-model="message.is_fav" @change="fav(message)">
+            </div>
+        </div>
+    </div>
+    <div class="navi">
+        <a href="/" class="navi_link"><div class="navi_item">Home</div></a>
+        <a href="/explore" class="navi_link"><div class="navi_item">Explore</div></a>
+    </div>
+</body>
+
+</html>
