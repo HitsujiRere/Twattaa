@@ -20,32 +20,71 @@ class Message {
     }
 }
 
+let user_id = '';
+
 const timelineApp = new Vue({
     el: '#timeline',
     data: {
-        xhr: new XMLHttpRequest(),
-        messages: []
+        messages: [],
     },
     methods: {
-        loadMessages: function() {
-            this.xhr.addEventListener('load', () => {
+        loadMessages: async function() {
+            await fetch("/get_messages?" + new URLSearchParams({user_id: user_id}), {
+                method: "GET",
+            })
+            .then(
+                response => response.json()
+            )
+            .then(resMessages => {
                 timelineApp.messages.splice(0);
-                for (const resMessage of JSON.parse(this.xhr.responseText)) {
+                for (const resMessage of resMessages) {
                     const message = Message.fromJson(resMessage);
                     timelineApp.messages.unshift(message);
                 }
             });
-            this.xhr.open('GET', '/get_messages');
-            this.xhr.send();
         },
         fav: function(message) {
-            // TODO - 過去のfavの履歴を保存
             console.log('fav', message);
-            socketio.emit('Twattaa_FAV', message.id, message.is_fav ? 1 : -1);
-        }
+            socketio.emit('Twattaa_FAV', message.id, message.is_fav ? 1 : -1, user_id);
+        },
+        loadFavHistory: async function () {
+            await fetch("/get_fav_messages?" + new URLSearchParams({user_id: user_id}), {
+                method: "GET",
+            })
+            .then(
+                response => response.json()
+            )
+            .then(favs => {
+                for (const fav of favs) {
+                    for (const message of this.messages) {
+                        if (message.id === fav.message_id) {
+                            message.is_fav = true;
+                        }
+                    }
+                }
+            });
+        },
+        getUserID: async function() {
+            let user_id_cookie = document.cookie.match('(^|;)\\s*user_id\\s*=\\s*([^;]+)');
+            if (user_id_cookie) {
+                return user_id_cookie.pop();
+            }
+
+            const user_id_get = await fetch("/get_user_id", {
+                method: "GET",
+            })
+            .then(
+                response => response.text()
+            );
+            document.cookie = 'user_id = ' + user_id_get;
+            return user_id_get;
+        },
     },
-    created : function() {
-        this.loadMessages();
+    created : async function() {
+        user_id = await this.getUserID();
+        console.log('user_id', user_id);
+        await this.loadMessages();
+        await this.loadFavHistory();
     },
 });
 
@@ -66,7 +105,7 @@ const myMessageApp = new Vue({
         },
         send: function() {
             if (this.myMessage !== '') {
-                socketio.emit('Twattaa_SEND', null, this.myMessage);
+                socketio.emit('Twattaa_SEND', null, this.myMessage, null);
                 this.myMessage = '';
             }
         }

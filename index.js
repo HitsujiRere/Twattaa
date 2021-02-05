@@ -15,7 +15,7 @@ app.use(bodyParser.urlencoded({
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-const loadMessages = async () => {
+const getMessages = async () => {
     let messagesText;
     const db = await getPostgresClient();
 
@@ -112,15 +112,17 @@ const getMessageLastID = async () => {
     return messageLastID;
 };
 
-const favMessage = async (id, add) => {
+const favMessage = async (msg_id, add, user_id) => {
     const db = await getPostgresClient();
 
     try {
-        const sql = `UPDATE messages SET fav_count = fav_count + $1 WHERE id = $2;`;
-        const params = [add, id];
-
         await db.begin();
-        await db.execute(sql, params);
+        await db.execute(`UPDATE messages SET fav_count = fav_count + $1 WHERE id = $2;`, [add, msg_id]);
+        if (add === 1) {
+            await db.execute(`INSERT INTO fav_history (user_id, message_id) VALUES ($1, $2);`, [user_id, msg_id]);
+        } else if (add === -1) {
+            await db.execute(`DELETE FROM fav_history where user_id = $1 AND message_id = $2;`, [user_id, msg_id]);
+        }
         await db.commit();
 
     } catch (e) {
@@ -131,6 +133,31 @@ const favMessage = async (id, add) => {
     }
 };
 
+const getFavMessagesID = async (user_id) => {
+    let messagesID = '';
+    const db = await getPostgresClient();
+
+    try {
+        const sql = `SELECT * FROM fav_history WHERE user_id = $1 ORDER BY user_id;`;
+        const params = [user_id];
+
+        await db.begin();
+        const ret = await db.execute(sql, params);
+        const retText = JSON.stringify(ret)
+            .replace(/null/g, '""');
+        messagesID = retText;
+
+        await db.commit();
+
+    } catch (e) {
+        await db.rollback();
+        throw e;
+    } finally {
+        await db.release();
+    }
+
+    return messagesID;
+};
 
 const renderHTML = (res, path) => {
     fs.readFile(path, 'utf-8', (err, data) => {
@@ -149,14 +176,32 @@ app.get('/explore', (req, res) => {
 });
 
 app.get('/get_messages', async (req, res) => {
-    res.write(await loadMessages());
+    res.write(await getMessages());
     res.end();
 });
 
-app.post('/explore_messages', async (req, res) => {
-    const searchText = req.body.text;
+app.get('/explore_messages', async (req, res) => {
+    const searchText = req.query.text;
     console.log('search', searchText);
     res.write(await searchMessages(searchText));
+    res.end();
+});
+
+app.get('/get_fav_messages', async (req, res) => {
+    const user_id = req.query.user_id;
+    console.log('user_id', user_id);
+    res.write(await getFavMessagesID(user_id));
+    res.end();
+});
+
+app.get('/get_user_id', async (req, res) => {
+    const chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    let user_id = '';
+    for (let i = 0; i < 8; i++) {
+        user_id += chars[Math.floor(Math.random() * chars.length)];
+    }
+    console.log('get_user_id', user_id);
+    res.write(user_id);
     res.end();
 });
 
@@ -168,18 +213,18 @@ const socketio = require('socket.io')(server);
 
 socketio.on('connection', async (socket) => {
     socket.on('Twattaa_SEND', async (id, body, talk_on) => {
-        await insertMessages(body);
         id = await getMessageLastID();
+        await insertMessages(body);
         talk_on = new Date();
         const message = { id: id, body: body, talk_on: talk_on };
         console.log(message);
         socketio.emit('Twattaa_SEND', id, body, talk_on);
     });
 
-    socket.on('Twattaa_FAV', async (id, add) => {
-        await favMessage(id, add);
-        const message = { id: id, add: add };
+    socket.on('Twattaa_FAV', async (msg_id, add, user_id) => {
+        await favMessage(msg_id, add, user_id);
+        const message = { msg_id: msg_id, add: add, user_id: user_id };
         console.log(message);
-        socketio.emit('Twattaa_FAV', id, add);
+        socketio.emit('Twattaa_FAV', msg_id, add);
     });
 });

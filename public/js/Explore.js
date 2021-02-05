@@ -20,41 +20,69 @@ class Message {
     }
 }
 
+let user_id = '';
+
 const timelineApp = new Vue({
     el: '#timeline',
     data: {
-        xhr: new XMLHttpRequest(),
         messages: []
     },
     methods: {
-        searchMessages: function(searchText) {
-            this.xhr.addEventListener('load', () => {
+        searchMessages: async function(searchText) {
+            await fetch("/explore_messages?" + new URLSearchParams({text: searchText}), {
+                method: "GET",
+            })
+            .then(
+                response => response.json()
+            )
+            .then(json => {
                 timelineApp.messages.splice(0);
-                for (const resMessage of JSON.parse(this.xhr.responseText)) {
+                for (const resMessage of json) {
                     const message = Message.fromJson(resMessage);
                     timelineApp.messages.unshift(message);
                 }
             });
-            this.xhr.open('POST', '/explore_messages');
-            this.xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-            this.xhr.send(this.EncodeHTMLForm({text: searchText}));
         },
-        EncodeHTMLForm: function(data) {
-            const params = [];
-        
-            for (const name in data) {
-                const value = data[name];
-                const param = encodeURIComponent(name) + '=' + encodeURIComponent(value);
-        
-                params.push(param);
-            }
-        
-            return params.join('&').replace(/%20/g, '+');
-        },        
         fav: function(message) {
             console.log('fav', message);
-            socketio.emit('Twattaa_FAV', message.id, message.is_fav ? 1 : -1);
-        }
+            socketio.emit('Twattaa_FAV', message.id, message.is_fav ? 1 : -1, user_id);
+        },
+        loadFavHistory: async function () {
+            await fetch("/get_fav_messages?" + new URLSearchParams({user_id: user_id}), {
+                method: "GET",
+            })
+            .then(
+                response => response.json()
+            )
+            .then(favs => {
+                for (const fav of favs) {
+                    for (const message of this.messages) {
+                        if (message.id === fav.message_id) {
+                            message.is_fav = true;
+                        }
+                    }
+                }
+            });
+        },
+        getUserID: async function() {
+            let user_id_cookie = document.cookie.match('(^|;)\\s*user_id\\s*=\\s*([^;]+)');
+            if (user_id_cookie) {
+                return user_id_cookie.pop();
+            }
+
+            const user_id_get = await fetch("/get_user_id", {
+                method: "GET",
+            })
+            .then(
+                response => response.text()
+            );
+            document.cookie = 'user_id = ' + user_id_get;
+            return user_id_get;
+        },
+    },
+    created : async function() {
+        user_id = await this.getUserID();
+        console.log('user_id', user_id);
     },
 });
 
@@ -64,8 +92,9 @@ const searchApp = new Vue({
         searchText: '',
     },
     methods: {
-        search: function() {
-            timelineApp.searchMessages(this.searchText);
+        search: async function() {
+            await timelineApp.searchMessages(this.searchText);
+            await timelineApp.loadFavHistory();
         }
     },
 });
